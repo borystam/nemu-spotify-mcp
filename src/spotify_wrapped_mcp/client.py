@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from types import TracebackType
 from typing import Any, Literal
@@ -93,12 +94,14 @@ class SpotifyClient:
         *,
         http: httpx.Client | None = None,
         timeout: float = 15.0,
+        on_token_rotation: Callable[[str], None] | None = None,
     ) -> None:
         self._client_id = client_id
         self._refresh_token = refresh_token
         self._http = http if http is not None else httpx.Client(timeout=timeout)
         self._owns_http = http is None
         self._access: _AccessToken | None = None
+        self._on_rotation = on_token_rotation
 
     def close(self) -> None:
         if self._owns_http:
@@ -141,8 +144,19 @@ class SpotifyClient:
             expires_at=time.time() + int(data["expires_in"]) - _EXPIRY_BUFFER_SECONDS,
         )
         new_rt = data.get("refresh_token")
-        if new_rt:
+        if new_rt and new_rt != self._refresh_token:
             self._refresh_token = new_rt
+            # Fire the rotation callback so callers can persist the new
+            # token. Spotify rotates on every refresh response in some
+            # configurations; without persistence, a deployment that
+            # reads the seed from an external store (1Password, k8s
+            # secret, etc.) will fail on the next process start when
+            # the seed has already been invalidated by the rotation.
+            if self._on_rotation is not None:
+                # Persistence is best-effort: never let it break a
+                # refresh that otherwise succeeded.
+                with contextlib.suppress(Exception):
+                    self._on_rotation(new_rt)
 
     def _access_token(self) -> str:
         if self._access is None or self._access.expires_at <= time.time():

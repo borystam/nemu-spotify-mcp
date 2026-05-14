@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from mcp.server import Server
@@ -23,7 +23,7 @@ from mcp.types import TextContent, Tool
 
 from . import __version__
 from .client import SpotifyClient, SpotifyDeprecatedForNewAppsError
-from .config import Credentials
+from .config import Credentials, write_rotated_token
 from .wrapped import Window, build_wrapped
 
 SERVER_NAME = "spotify-wrapped-mcp"
@@ -379,6 +379,22 @@ async def list_tools() -> list[Tool]:
 _client_singleton: SpotifyClient | None = None
 
 
+def _persist_rotated(client_id: str) -> Callable[[str], None]:
+    """Return a callback that persists a rotated refresh token to disk.
+
+    Wired into :class:`SpotifyClient` as ``on_token_rotation`` so the
+    long-running MCP process can survive Spotify's per-refresh
+    rotation policy without a fresh OAuth bootstrap each restart.
+    The next :meth:`Credentials.load` will find the rotated file and
+    prefer it over the (now-stale) seed in 1P / env / credentials.json.
+    """
+
+    def _cb(new_rt: str) -> None:
+        write_rotated_token(client_id, new_rt)
+
+    return _cb
+
+
 def _get_client() -> SpotifyClient:
     """Lazy-construct the singleton :class:`SpotifyClient`.
 
@@ -387,7 +403,11 @@ def _get_client() -> SpotifyClient:
     global _client_singleton  # noqa: PLW0603 — module-scoped singleton, by design
     if _client_singleton is None:
         creds = Credentials.load()
-        _client_singleton = SpotifyClient(creds.client_id, creds.refresh_token)
+        _client_singleton = SpotifyClient(
+            creds.client_id,
+            creds.refresh_token,
+            on_token_rotation=_persist_rotated(creds.client_id),
+        )
     return _client_singleton
 
 

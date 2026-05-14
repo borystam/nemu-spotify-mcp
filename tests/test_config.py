@@ -195,3 +195,87 @@ class TestLoadFromEnv:
         monkeypatch.setenv(CONFIG_ENV, str(tmp_path / "nope"))
         with pytest.raises(FileNotFoundError, match="SPOTIFY_CLIENT_ID"):
             Credentials.load()
+
+
+class TestRotatedTokenFile:
+    """Persistence of rotated refresh tokens."""
+
+    def test_write_and_read_roundtrip(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import (
+            read_rotated_token,
+            rotated_token_path,
+            write_rotated_token,
+        )
+
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(tmp_path / "rot.json"))
+        p = write_rotated_token("cid-A", "rt-new")
+        assert p == rotated_token_path()
+        assert read_rotated_token("cid-A") == "rt-new"
+
+    def test_read_returns_none_when_client_id_mismatches(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import read_rotated_token, write_rotated_token
+
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(tmp_path / "rot.json"))
+        write_rotated_token("cid-A", "rt-new")
+        # Different OAuth app — must not return the rotated token
+        assert read_rotated_token("cid-B") is None
+
+    def test_read_returns_none_when_file_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import read_rotated_token
+
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(tmp_path / "missing.json"))
+        assert read_rotated_token("cid") is None
+
+    def test_read_returns_none_on_corrupt_json(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import read_rotated_token
+
+        bad = tmp_path / "rot.json"
+        bad.write_text("not json {")
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(bad))
+        assert read_rotated_token("cid") is None
+
+    def test_write_is_chmod_600_on_posix(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import write_rotated_token
+
+        path = tmp_path / "rot.json"
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(path))
+        write_rotated_token("cid", "rt")
+        if os.name == "posix":
+            assert (path.stat().st_mode & 0o777) == 0o600
+
+    def test_load_prefers_rotated_token_over_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import write_rotated_token
+
+        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "cid")
+        monkeypatch.setenv("SPOTIFY_REFRESH_TOKEN", "rt-from-env-stale")
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(tmp_path / "rot.json"))
+        write_rotated_token("cid", "rt-fresh-rotated")
+        creds = Credentials.load()
+        assert creds.refresh_token == "rt-fresh-rotated"
+
+    def test_load_falls_back_to_env_when_client_id_mismatches(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import write_rotated_token
+
+        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "cid-NEW")
+        monkeypatch.setenv("SPOTIFY_REFRESH_TOKEN", "rt-from-env")
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(tmp_path / "rot.json"))
+        write_rotated_token("cid-OLD", "rt-old-rotated")
+        creds = Credentials.load()
+        # User re-bootstrapped with a different app; rotated token must
+        # not be used.
+        assert creds.client_id == "cid-NEW"
+        assert creds.refresh_token == "rt-from-env"
