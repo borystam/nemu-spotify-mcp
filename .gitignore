@@ -25,6 +25,10 @@ env/
 .env.*
 !.env.example
 
+# uv (lockfile only when contributors use uv for the dev env; the
+# project itself stays installable via pip per CI)
+uv.lock
+
 # IDE / OS
 .idea/
 .vscode/

@@ -138,6 +138,7 @@ _EXPECTED_TOOLS = {
     "get_saved_tracks",
     "get_saved_albums",
     "get_followed_artists",
+    "get_wrapped",
 }
 
 
@@ -146,8 +147,8 @@ class TestListTools:
         names = set(srv._tool_names())
         assert names == _EXPECTED_TOOLS
 
-    def test_count_is_22(self) -> None:
-        assert len(list(srv._tool_names())) == 22
+    def test_count_is_23(self) -> None:
+        assert len(list(srv._tool_names())) == 23
 
     def test_every_tool_has_schema_with_object_type(self) -> None:
         for tool in srv._TOOLS:
@@ -176,6 +177,7 @@ class TestListTools:
             "get_user_profile": {"user_id"},
             "get_audio_features": {"ids"},
             "get_top": {"type"},
+            "get_wrapped": {"window"},
         }
         for tool in srv._TOOLS:
             if tool.name in id_keyed:

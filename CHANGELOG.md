@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Phase 2 (aggregations + history poller)
+
+- **``get_wrapped(window)``** MCP tool returning a structured monthly /
+  weekly / yearly summary: top artists / tracks / genres, total plays,
+  unique artists, new artists (first heard inside the window), per-day
+  and per-hour-of-day histograms. Pure data shaping — no LLM. Aggregates
+  from the local jsonl when any plays fall within the window; falls
+  back to ``/me/top`` with the matching ``time_range`` otherwise (top_*
+  lists populated, histograms empty). Output shape is locked by a
+  syrupy snapshot test.
+- **``spotify-history-poller``** CLI (replaces the Phase 0 stub):
+  one-shot, polls ``/me/player/recently-played?limit=50`` and appends
+  each new play as a JSON line to ``history-YYYY-MM.jsonl`` under
+  ``$SPOTIFY_WRAPPED_MCP_HISTORY_DIR`` / ``$XDG_DATA_HOME/spotify-
+  wrapped-mcp`` / ``~/.local/share/spotify-wrapped-mcp``. Dedupes
+  against the tail of the existing file by ``played_at``. Handles
+  month-boundary plays correctly (writes April and May plays into
+  separate monthly files in a single batch). Designed for cron — see
+  ``docs/POLLER.md``.
+- **``docs/POLLER.md``**: cron + systemd-timer setup, every-30-minute
+  cadence rationale (Spotify's 50-track buffer fills in ~2½ hours for a
+  heavy listener), disk-usage estimate (~1.5 MB/month), rotation
+  pattern.
+- **Tests** (24 new unit tests, all mocked, no real network, no real
+  personal data):
+  - ``tests/test_wrapped.py`` (10): history-dir resolution precedence,
+    local-history aggregation, window filtering, ``new_artists``
+    excludes previously-heard, histograms populated, corrupt jsonl
+    line skipped, ``/me/top`` fallback, output-shape snapshot, key
+    stability.
+  - ``tests/test_poller.py`` (7): appends new plays, dedupes against
+    existing, appends only the diff on the second poll, splits plays
+    across the month boundary into separate files, empty-response
+    no-op, items without ``track`` skipped, items without
+    ``played_at`` skipped.
+  - ``tests/test_server_tools.py`` updated: list_tools count 22 → 23,
+    ``get_wrapped`` registered with ``window`` required, dispatch maps
+    to ``build_wrapped``.
+
 ### Added — Phase 1 (read-only tool suite)
 
 - **22 MCP tools registered** in

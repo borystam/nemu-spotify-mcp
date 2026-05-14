@@ -24,6 +24,7 @@ from mcp.types import TextContent, Tool
 from . import __version__
 from .client import SpotifyClient, SpotifyDeprecatedForNewAppsError
 from .config import Credentials
+from .wrapped import Window, build_wrapped
 
 SERVER_NAME = "spotify-wrapped-mcp"
 
@@ -339,6 +340,29 @@ _TOOLS: list[Tool] = [
             },
         },
     ),
+    # ---- aggregations --------------------------------------------------
+    Tool(
+        name="get_wrapped",
+        description=(
+            "Structured month/week/year listening summary. Aggregates "
+            "from the local jsonl written by `spotify-history-poller` "
+            "when that file covers the window; otherwise falls back to "
+            "`/me/top` (top_artists / top_tracks / top_genres still "
+            "populated, histograms empty). Pure data shaping — no LLM. "
+            "Stable shape: top_artists / top_tracks / top_genres / "
+            "total_plays / unique_artists / new_artists / "
+            "daily_play_histogram / hour_of_day_histogram. Each artist "
+            "and track carries `uri` so an agent can pipe results "
+            "straight into a playback MCP."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "window": _enum("week", "month", "year"),
+            },
+            "required": ["window"],
+        },
+    ),
 ]
 
 
@@ -448,7 +472,18 @@ def _build_handlers() -> dict[str, Any]:
             limit=a.get("limit", 20),
             after=a.get("after"),
         ),
+        # ---- aggregations -------------------------------------------
+        "get_wrapped": lambda c, a: build_wrapped(
+            window=_validated_window(a["window"]),
+            client=c,
+        ),
     }
+
+
+def _validated_window(value: str) -> Window:
+    if value not in ("week", "month", "year"):
+        raise ValueError(f"window must be week|month|year, got {value!r}")
+    return value  # type: ignore[return-value]
 
 
 _HANDLERS: dict[str, Any] = _build_handlers()
