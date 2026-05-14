@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+
+# Virtual envs
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Spotify-Wrapped-MCP runtime secrets (NEVER commit)
+credentials.json
+spotify-credentials.json
+*.credentials.json
+tokens.json
+*.token
+*.tokens
+.spotify-cache
+
+# History poller storage (user data)
+history/
+*.history.jsonl
+data/
