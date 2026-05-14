@@ -1,11 +1,17 @@
 """Credential file location and load/save.
 
-Credentials are stored as JSON at
-``$SPOTIFY_WRAPPED_MCP_CONFIG_DIR`` (if set), else
-``$XDG_CONFIG_HOME/spotify-wrapped-mcp``, else
-``~/.config/spotify-wrapped-mcp``.
+Credentials are loaded from one of three sources, in order:
 
-The file is created with ``0600`` permissions on POSIX systems.
+1. Environment variables ``SPOTIFY_CLIENT_ID`` and
+   ``SPOTIFY_REFRESH_TOKEN`` (and optionally ``SPOTIFY_SCOPE``).
+   Useful when the server runs under a secrets-injection wrapper —
+   ``op run`` for 1Password, systemd ``EnvironmentFile=``, Kubernetes
+   secrets, etc. — without needing to materialise a JSON file on disk.
+2. A JSON file at the explicit path passed to :meth:`Credentials.load`.
+3. The default JSON path: ``$SPOTIFY_WRAPPED_MCP_CONFIG_DIR`` if set,
+   else ``$XDG_CONFIG_HOME/spotify-wrapped-mcp``, else
+   ``~/.config/spotify-wrapped-mcp``. The file is created with
+   ``0600`` on POSIX.
 """
 
 from __future__ import annotations
@@ -17,6 +23,12 @@ from pathlib import Path
 
 CONFIG_ENV = "SPOTIFY_WRAPPED_MCP_CONFIG_DIR"
 CREDENTIALS_FILENAME = "credentials.json"
+
+# Environment-variable fallback names. Kept in one place so the rest of
+# the codebase imports them rather than spelling them inline.
+CLIENT_ID_ENV = "SPOTIFY_CLIENT_ID"
+REFRESH_TOKEN_ENV = "SPOTIFY_REFRESH_TOKEN"
+SCOPE_ENV = "SPOTIFY_SCOPE"
 
 
 def config_dir() -> Path:
@@ -49,14 +61,34 @@ class Credentials:
 
     @classmethod
     def load(cls, path: Path | None = None) -> Credentials:
-        """Load credentials from ``path`` (default: :func:`credentials_path`).
+        """Load credentials.
 
-        Raises ``FileNotFoundError`` with a helpful message if missing.
+        Order of precedence:
+
+        1. ``SPOTIFY_CLIENT_ID`` + ``SPOTIFY_REFRESH_TOKEN`` env vars
+           (with optional ``SPOTIFY_SCOPE``). Used when a secrets-
+           injection wrapper provides credentials at process start.
+        2. A JSON file at the explicit ``path``, or at
+           :func:`credentials_path` if ``path`` is ``None``.
+
+        Raises ``FileNotFoundError`` with a helpful message if neither
+        source resolves a usable pair.
         """
+        env_id = os.environ.get(CLIENT_ID_ENV)
+        env_rt = os.environ.get(REFRESH_TOKEN_ENV)
+        if env_id and env_rt:
+            return cls(
+                client_id=env_id,
+                refresh_token=env_rt,
+                scope=os.environ.get(SCOPE_ENV, ""),
+            )
         p = path or credentials_path()
         if not p.exists():
             raise FileNotFoundError(
-                f"Credentials not found at {p}. Run `spotify-wrapped-mcp-auth` first."
+                f"Credentials not found at {p} and neither {CLIENT_ID_ENV} nor "
+                f"{REFRESH_TOKEN_ENV} is set in the environment. Run "
+                f"`spotify-wrapped-mcp-auth` to create the file, or export the "
+                f"two env vars."
             )
         data = json.loads(p.read_text(encoding="utf-8"))
         return cls(

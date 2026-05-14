@@ -117,3 +117,81 @@ class TestCredentialsImmutable:
         c = Credentials(client_id="a", refresh_token="b", scope="c")
         with pytest.raises(dataclasses.FrozenInstanceError):
             c.client_id = "different"  # type: ignore[misc]
+
+
+class TestLoadFromEnv:
+    """Env-var fallback for hermes / op-run / k8s secrets deployments."""
+
+    def test_env_takes_precedence_over_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # File with one set of creds...
+        path = tmp_path / "credentials.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "client_id": "from-file",
+                    "refresh_token": "rt-file",
+                    "scope": "scope-file",
+                }
+            )
+        )
+        # ...env with a different set
+        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "from-env")
+        monkeypatch.setenv("SPOTIFY_REFRESH_TOKEN", "rt-env")
+        monkeypatch.setenv("SPOTIFY_SCOPE", "scope-env")
+        creds = Credentials.load(path)
+        assert creds.client_id == "from-env"
+        assert creds.refresh_token == "rt-env"
+        assert creds.scope == "scope-env"
+
+    def test_env_without_file_works(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "only-env")
+        monkeypatch.setenv("SPOTIFY_REFRESH_TOKEN", "rt-only-env")
+        monkeypatch.delenv("SPOTIFY_SCOPE", raising=False)
+        # Point credentials_path at a non-existent file
+        monkeypatch.setenv(CONFIG_ENV, str(tmp_path / "nope"))
+        creds = Credentials.load()
+        assert creds.client_id == "only-env"
+        assert creds.scope == ""
+
+    def test_partial_env_falls_through_to_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Setting only ONE of the two env vars must not silently mask
+        the file — the user almost certainly meant to set both, and the
+        safer failure mode is to use the file (or surface the missing
+        var clearly)."""
+        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "only-id")
+        monkeypatch.delenv("SPOTIFY_REFRESH_TOKEN", raising=False)
+        path = tmp_path / "credentials.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "client_id": "from-file",
+                    "refresh_token": "rt-file",
+                    "scope": "scope-file",
+                }
+            )
+        )
+        creds = Credentials.load(path)
+        assert creds.client_id == "from-file"
+
+    def test_no_env_no_file_raises(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+        monkeypatch.delenv("SPOTIFY_REFRESH_TOKEN", raising=False)
+        monkeypatch.setenv(CONFIG_ENV, str(tmp_path / "nope"))
+        with pytest.raises(FileNotFoundError, match="SPOTIFY_CLIENT_ID"):
+            Credentials.load()
