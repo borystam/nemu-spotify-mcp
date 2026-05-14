@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Phase 1 (read-only tool suite)
+
+- **22 MCP tools registered** in
+  ``spotify_wrapped_mcp.server`` and dispatched via a name→handler
+  registry. Each tool maps to exactly one Spotify endpoint and returns
+  its JSON verbatim, preserving every ``uri`` /  ``external_urls`` /
+  ``href`` field so a downstream playback MCP (Sonos, generic
+  Spotify-Connect) can consume results without a second lookup.
+  - **Search & lookup (12):** ``search``, ``get_track``, ``get_tracks``,
+    ``get_album``, ``get_albums``, ``get_artist``, ``get_artists``,
+    ``get_artist_top_tracks``, ``get_artist_albums``, ``get_playlist``,
+    ``get_user_profile``, ``get_audio_features``.
+  - **Library & listening (10):** ``get_me``, ``get_top``,
+    ``get_recently_played``, ``get_now_playing``,
+    ``get_playback_state``, ``get_devices``, ``get_playlists``,
+    ``get_saved_tracks``, ``get_saved_albums``, ``get_followed_artists``.
+- **Typed wrappers on ``SpotifyClient``** for every endpoint above.
+  Bulk-lookup helpers (``get_tracks`` / ``get_albums`` / ``get_artists``
+  / ``get_audio_features``) enforce Spotify's per-endpoint ID caps
+  client-side so callers see a ``ValueError`` rather than a 400
+  round-trip. Cursor-paginated endpoints
+  (``get_recently_played``, ``get_followed_artists``) take their cursors
+  as keyword args. ``/me/player/currently-playing`` and ``/me/player``
+  return ``{}`` cleanly on 204 No Content rather than crashing.
+- **``SpotifyDeprecatedForNewAppsError``** typed exception for the
+  endpoints Spotify restricted to pre-2024-11-27 apps
+  (``/audio-features``, ``/audio-analysis``, ``/recommendations``,
+  ``/related-artists``). The MCP layer unwraps it into a structured
+  ``{"error": "deprecated_for_new_apps", ...}`` payload so agents can
+  explain the situation to users instead of surfacing a bare HTTP error.
+- **Composition-with-Sonos design**: the README and tool descriptions
+  flag URI hand-off explicitly so an agent can chain
+  ``get_artist_top_tracks(artist_id=…)[0]['uri']`` →
+  ``sonos_play(content=uri, zone=…)`` with no parser glue. ``get_top``
+  + ``get_recently_played`` + ``get_wrapped`` (Phase 2) are the
+  primary feeders for a music-routing skill on the agent side.
+- **Tests** (147 new unit tests, all mocked, no real network):
+  - ``tests/test_client_search_lookup.py``: 38 tests including bulk-cap
+    enforcement, comma-encoded ID lists, parameter forwarding, empty
+    results, 4xx and 429 propagation, and the deprecated-for-new-apps
+    gate firing on 403 and 404 but **not** on non-deprecated endpoints.
+  - ``tests/test_client_library.py``: 25 tests covering each ``/me/*``
+    endpoint's path, default and explicit pagination, cursor ``after`` /
+    ``before`` propagation, 204-No-Content handling on now-playing and
+    playback-state, and devices/saved/followed shapes.
+  - ``tests/test_server_tools.py``: 22 tests covering the
+    ``list_tools()`` registration (22 tools registered, every descriptor
+    well-formed, required-args declared), and ``call_tool()`` dispatch
+    (each tool routes to the matching ``SpotifyClient`` method with
+    correct keyword shape; response is a single JSON-encoded
+    ``TextContent``; unknown tool raises; deprecated-for-new-apps
+    payload is unwrapped to a structured error).
+- ``ruff check``, ``black --check``, ``isort --check-only``, and
+  ``mypy --strict`` all pass on the new code.
+
 ### Added — Phase 0 (scaffolding)
 
 - Project skeleton: `pyproject.toml` with hatchling backend, src layout,
@@ -63,17 +118,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Not yet (planned)
 
-- **Phase 1 — read-only suite**: implement the full set of read-only
-  tools. Target ≥ 85 % coverage, 8+ unit tests per tool, 2+ integration
-  tests per tool (gated by `SPOTIFY_INTEGRATION_TESTS=1`).
-  - **Search & lookup**: `search`, `get_track`, `get_tracks`, `get_album`,
-    `get_albums`, `get_artist`, `get_artists`, `get_artist_top_tracks`,
-    `get_artist_albums`, `get_playlist`, `get_user_profile`,
-    `get_audio_features`.
-  - **Library & listening**: `get_me`, `get_top`, `get_recently_played`,
-    `get_now_playing`, `get_playback_state`, `get_devices`,
-    `get_playlists`, `get_saved_tracks`, `get_saved_albums`,
-    `get_followed_artists`.
 - **Phase 2 — aggregations**: `get_wrapped` (month/week/year summary
   with top artists/tracks/genres + daily/hourly histograms) +
   `spotify-history-poller` CLI + local jsonl storage format. Snapshot
