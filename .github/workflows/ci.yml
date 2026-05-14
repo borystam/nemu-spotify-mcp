@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint, format, type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Ruff
+        run: ruff check .
+      - name: Black (check)
+        run: black --check .
+      - name: isort (check)
+        run: isort --check-only .
+      - name: mypy --strict
+        run: mypy src
+
+  test:
+    name: Tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Pytest with coverage
+        run: |
+          pytest \
+            --cov=spotify_wrapped_mcp \
+            --cov-report=term-missing \
+            --cov-report=xml
+      - name: Upload coverage XML
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: error
+
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install build
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+      - name: Build
+        run: python -m build
+      - name: List artifacts
+        run: ls -la dist/
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
+  secrets-scan:
+    name: Secrets scan (smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for forbidden patterns
+        run: |
+          # Refuses to merge if a real credentials file or token sneaks into the repo.
+          if grep -RInE 'BQ[A-Za-z0-9_-]{60,}' --include="*.py" --include="*.md" --include="*.yml" --include="*.yaml" --include="*.json" .; then
+            echo "::error::Possible Spotify access token committed."
+            exit 1
+          fi
+          for forbidden in credentials.json spotify-credentials.json tokens.json; do
+            if find . -name "$forbidden" -not -path "./.git/*" | grep .; then
+              echo "::error::Forbidden file '$forbidden' committed."
+              exit 1
+            fi
+          done

@@ -1,0 +1,67 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please **redact any tokens, client IDs, or
+        personal listening data** from the output you paste — this issue
+        will be public.
+
+  - type: input
+    id: version
+    attributes:
+      label: spotify-wrapped-mcp version
+      description: "Output of `spotify-wrapped-mcp --version`"
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.12.4"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "macOS 15 / Ubuntu 24.04 / Windows 11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Steps to reproduce.
+      placeholder: |
+        1. Ran `spotify-wrapped-mcp-auth ...`
+        2. Got error: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output (redact secrets!)
+      render: shell
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmations
+      options:
+        - label: I redacted any tokens, client IDs, and personal data.
+          required: true
