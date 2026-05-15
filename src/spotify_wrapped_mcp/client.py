@@ -281,16 +281,21 @@ class SpotifyClient:
             params={"ids": _join_ids(ids, limit=MAX_IDS_PER_ARTISTS_LOOKUP)},
         )
 
-    def get_artist_top_tracks(
-        self, artist_id: str, *, market: str = "from_token"
-    ) -> dict[str, Any]:
+    def get_artist_top_tracks(self, artist_id: str, *, market: str | None = None) -> dict[str, Any]:
         """``GET /artists/{id}/top-tracks`` — top tracks for an artist.
 
-        ``market`` defaults to ``from_token`` — Spotify resolves it from
-        the authenticated user's country, which is what the agent wants
-        for "play X's top track on Sonos" chains.
+        ``market`` is optional. Pass an ISO-3166 country code (``"PL"``,
+        ``"GB"``, ``"US"``, …) for region-specific top tracks. Note that
+        the historic ``"from_token"`` value — which used to resolve the
+        authenticated user's country automatically — was withdrawn for
+        new apps on 2024-11-27 alongside the audio-features /
+        recommendations restrictions, and returns 403 against new apps;
+        avoid passing it.
         """
-        return self.get(f"/artists/{artist_id}/top-tracks", params={"market": market})
+        params: dict[str, Any] = {}
+        if market is not None:
+            params["market"] = market
+        return self.get(f"/artists/{artist_id}/top-tracks", params=params)
 
     def get_artist_albums(
         self,

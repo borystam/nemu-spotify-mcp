@@ -223,11 +223,14 @@ class TestDispatchSearchAndLookup:
         assert args == (["a", "b"],)
         assert kw == {"market": "PL"}
 
-    def test_get_artist_top_tracks_default_market(self, spy: _SpyClient) -> None:
+    def test_get_artist_top_tracks_market_omitted_by_default(self, spy: _SpyClient) -> None:
+        """``from_token`` was withdrawn for new apps 2024-11-27;
+        dispatcher passes ``market=None`` so the client drops the param
+        entirely, letting Spotify fall back to its global default."""
         _call("get_artist_top_tracks", {"artist_id": "0000000000000000000002"})
         _, args, kw = spy.calls[0]
         assert args == ("0000000000000000000002",)
-        assert kw == {"market": "from_token"}
+        assert kw == {"market": None}
 
     def test_get_artist_albums_with_include_groups(self, spy: _SpyClient) -> None:
         _call(

@@ -166,7 +166,15 @@ _TOOLS: list[Tool] = [
             "type": "object",
             "properties": {
                 "artist_id": _STRING,
-                "market": {**_STRING, "default": "from_token"},
+                "market": {
+                    **_STRING,
+                    "description": (
+                        "Optional ISO-3166 country code (PL/GB/US/…). "
+                        "Do NOT pass 'from_token' — it was withdrawn "
+                        "for new apps on 2024-11-27 and returns 403. "
+                        "Omit to use Spotify's default."
+                    ),
+                },
             },
             "required": ["artist_id"],
         },
@@ -452,7 +460,7 @@ def _build_handlers() -> dict[str, Any]:
         "get_artist": lambda c, a: c.get_artist(a["artist_id"]),
         "get_artists": lambda c, a: c.get_artists(a["ids"]),
         "get_artist_top_tracks": lambda c, a: c.get_artist_top_tracks(
-            a["artist_id"], market=a.get("market", "from_token")
+            a["artist_id"], market=a.get("market")
         ),
         "get_artist_albums": lambda c, a: c.get_artist_albums(
             a["artist_id"],

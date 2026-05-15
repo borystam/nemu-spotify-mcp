@@ -296,7 +296,11 @@ class TestArtistTopTracks:
             out = c.get_artist_top_tracks("0000000000000000000002")
         assert out["tracks"][0]["uri"] == "spotify:track:0000000000000000000001"
 
-    def test_market_defaults_to_from_token(self) -> None:
+    def test_market_omitted_when_not_passed(self) -> None:
+        """``from_token`` was withdrawn for new apps on 2024-11-27 —
+        omit the market param entirely when the caller doesn't pass
+        one, so Spotify falls back to its global default rather than
+        returning 403."""
         captured: list[str] = []
 
         def handler(req: httpx.Request) -> httpx.Response:
@@ -307,7 +311,7 @@ class TestArtistTopTracks:
 
         with _make_client(handler) as c:
             c.get_artist_top_tracks("0000000000000000000002")
-        assert parse_qs(urlparse(captured[0]).query)["market"] == ["from_token"]
+        assert "market" not in parse_qs(urlparse(captured[0]).query)
 
     def test_explicit_market_overrides_default(self) -> None:
         captured: list[str] = []
