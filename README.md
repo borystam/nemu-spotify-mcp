@@ -25,10 +25,13 @@ MCPs above, or a hardware integration like a Sonos MCP — see
 
 ## Status
 
-**Phase 0 — scaffolded.** OAuth bootstrap, credential storage, and the
-HTTP client are implemented; the MCP tools land in Phase 1. See
-[`CHANGELOG.md`](CHANGELOG.md) for the current state and
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the roadmap.
+**Phase 1 — read-only tool suite shipped.** 22 MCP tools wired through
+typed wrappers on `SpotifyClient` (one Spotify endpoint each), full
+unit-test coverage against `httpx.MockTransport`, integration tests
+gated by `SPOTIFY_INTEGRATION_TESTS=1`. `get_wrapped` + the history
+poller land in Phase 2. See [`CHANGELOG.md`](CHANGELOG.md) for the
+current state and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for
+the roadmap.
 
 ## Planned tools
 

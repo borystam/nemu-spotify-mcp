@@ -117,3 +117,165 @@ class TestCredentialsImmutable:
         c = Credentials(client_id="a", refresh_token="b", scope="c")
         with pytest.raises(dataclasses.FrozenInstanceError):
             c.client_id = "different"  # type: ignore[misc]
+
+
+class TestLoadFromEnv:
+    """Env-var fallback for hermes / op-run / k8s secrets deployments."""
+
+    def test_env_takes_precedence_over_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # File with one set of creds...
+        path = tmp_path / "credentials.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "client_id": "from-file",
+                    "refresh_token": "rt-file",
+                    "scope": "scope-file",
+                }
+            )
+        )
+        # ...env with a different set
+        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "from-env")
+        monkeypatch.setenv("SPOTIFY_REFRESH_TOKEN", "rt-env")
+        monkeypatch.setenv("SPOTIFY_SCOPE", "scope-env")
+        creds = Credentials.load(path)
+        assert creds.client_id == "from-env"
+        assert creds.refresh_token == "rt-env"
+        assert creds.scope == "scope-env"
+
+    def test_env_without_file_works(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "only-env")
+        monkeypatch.setenv("SPOTIFY_REFRESH_TOKEN", "rt-only-env")
+        monkeypatch.delenv("SPOTIFY_SCOPE", raising=False)
+        # Point credentials_path at a non-existent file
+        monkeypatch.setenv(CONFIG_ENV, str(tmp_path / "nope"))
+        creds = Credentials.load()
+        assert creds.client_id == "only-env"
+        assert creds.scope == ""
+
+    def test_partial_env_falls_through_to_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Setting only ONE of the two env vars must not silently mask
+        the file — the user almost certainly meant to set both, and the
+        safer failure mode is to use the file (or surface the missing
+        var clearly)."""
+        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "only-id")
+        monkeypatch.delenv("SPOTIFY_REFRESH_TOKEN", raising=False)
+        path = tmp_path / "credentials.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "client_id": "from-file",
+                    "refresh_token": "rt-file",
+                    "scope": "scope-file",
+                }
+            )
+        )
+        creds = Credentials.load(path)
+        assert creds.client_id == "from-file"
+
+    def test_no_env_no_file_raises(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+        monkeypatch.delenv("SPOTIFY_REFRESH_TOKEN", raising=False)
+        monkeypatch.setenv(CONFIG_ENV, str(tmp_path / "nope"))
+        with pytest.raises(FileNotFoundError, match="SPOTIFY_CLIENT_ID"):
+            Credentials.load()
+
+
+class TestRotatedTokenFile:
+    """Persistence of rotated refresh tokens."""
+
+    def test_write_and_read_roundtrip(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import (
+            read_rotated_token,
+            rotated_token_path,
+            write_rotated_token,
+        )
+
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(tmp_path / "rot.json"))
+        p = write_rotated_token("cid-A", "rt-new")
+        assert p == rotated_token_path()
+        assert read_rotated_token("cid-A") == "rt-new"
+
+    def test_read_returns_none_when_client_id_mismatches(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import read_rotated_token, write_rotated_token
+
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(tmp_path / "rot.json"))
+        write_rotated_token("cid-A", "rt-new")
+        # Different OAuth app — must not return the rotated token
+        assert read_rotated_token("cid-B") is None
+
+    def test_read_returns_none_when_file_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import read_rotated_token
+
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(tmp_path / "missing.json"))
+        assert read_rotated_token("cid") is None
+
+    def test_read_returns_none_on_corrupt_json(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import read_rotated_token
+
+        bad = tmp_path / "rot.json"
+        bad.write_text("not json {")
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(bad))
+        assert read_rotated_token("cid") is None
+
+    def test_write_is_chmod_600_on_posix(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import write_rotated_token
+
+        path = tmp_path / "rot.json"
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(path))
+        write_rotated_token("cid", "rt")
+        if os.name == "posix":
+            assert (path.stat().st_mode & 0o777) == 0o600
+
+    def test_load_prefers_rotated_token_over_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import write_rotated_token
+
+        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "cid")
+        monkeypatch.setenv("SPOTIFY_REFRESH_TOKEN", "rt-from-env-stale")
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(tmp_path / "rot.json"))
+        write_rotated_token("cid", "rt-fresh-rotated")
+        creds = Credentials.load()
+        assert creds.refresh_token == "rt-fresh-rotated"
+
+    def test_load_falls_back_to_env_when_client_id_mismatches(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from spotify_wrapped_mcp.config import write_rotated_token
+
+        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "cid-NEW")
+        monkeypatch.setenv("SPOTIFY_REFRESH_TOKEN", "rt-from-env")
+        monkeypatch.setenv("SPOTIFY_WRAPPED_MCP_ROTATED_TOKEN_FILE", str(tmp_path / "rot.json"))
+        write_rotated_token("cid-OLD", "rt-old-rotated")
+        creds = Credentials.load()
+        # User re-bootstrapped with a different app; rotated token must
+        # not be used.
+        assert creds.client_id == "cid-NEW"
+        assert creds.refresh_token == "rt-from-env"

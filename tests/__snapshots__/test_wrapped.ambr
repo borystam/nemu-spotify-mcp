@@ -1,0 +1,17 @@
+# serializer version: 1
+# name: test_wrapped_output_shape_snapshot
+  list([
+    'daily_play_histogram',
+    'from',
+    'hour_of_day_histogram',
+    'new_artists',
+    'source',
+    'to',
+    'top_artists',
+    'top_genres',
+    'top_tracks',
+    'total_plays',
+    'unique_artists',
+    'window',
+  ])
+# ---

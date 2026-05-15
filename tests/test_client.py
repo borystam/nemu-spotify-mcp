@@ -175,3 +175,78 @@ class TestSpotifyClientLifecycle:
         owned = c._http
         c.close()
         assert owned.is_closed
+
+
+class TestRotationCallback:
+    """SpotifyClient fires on_token_rotation when Spotify rotates."""
+
+    def test_fires_on_new_refresh_token(self) -> None:
+        seen: list[str] = []
+
+        def handler(req):
+            if req.url.host == "accounts.spotify.com":
+                return httpx.Response(
+                    200,
+                    json={
+                        "access_token": "atok-1",
+                        "expires_in": 3600,
+                        "scope": "x",
+                        "token_type": "Bearer",
+                        "refresh_token": "rt-rotated",
+                    },
+                )
+            return httpx.Response(200, json={"ok": True})
+
+        http = httpx.Client(transport=httpx.MockTransport(handler))
+        c = SpotifyClient("cid", "rt-orig", http=http, on_token_rotation=seen.append)
+        c.me()
+        assert seen == ["rt-rotated"]
+        assert c.refresh_token == "rt-rotated"
+
+    def test_no_callback_when_token_unchanged(self) -> None:
+        seen: list[str] = []
+
+        def handler(req):
+            if req.url.host == "accounts.spotify.com":
+                # Response without refresh_token field — no rotation
+                return httpx.Response(
+                    200,
+                    json={
+                        "access_token": "atok-1",
+                        "expires_in": 3600,
+                        "scope": "x",
+                        "token_type": "Bearer",
+                    },
+                )
+            return httpx.Response(200, json={"ok": True})
+
+        http = httpx.Client(transport=httpx.MockTransport(handler))
+        c = SpotifyClient("cid", "rt-orig", http=http, on_token_rotation=seen.append)
+        c.me()
+        assert seen == []
+
+    def test_callback_exception_does_not_break_refresh(self) -> None:
+        """Persistence failures must not propagate — the refresh itself succeeded."""
+
+        def handler(req):
+            if req.url.host == "accounts.spotify.com":
+                return httpx.Response(
+                    200,
+                    json={
+                        "access_token": "atok",
+                        "expires_in": 3600,
+                        "scope": "x",
+                        "token_type": "Bearer",
+                        "refresh_token": "rt-rotated",
+                    },
+                )
+            return httpx.Response(200, json={"profile": "ok"})
+
+        def boom(_rt: str) -> None:
+            raise OSError("disk full")
+
+        http = httpx.Client(transport=httpx.MockTransport(handler))
+        c = SpotifyClient("cid", "rt-orig", http=http, on_token_rotation=boom)
+        # Should NOT raise — the persistence callback failure is swallowed.
+        assert c.me() == {"profile": "ok"}
+        assert c.refresh_token == "rt-rotated"
