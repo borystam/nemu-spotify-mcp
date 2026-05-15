@@ -157,9 +157,10 @@ _TOOLS: list[Tool] = [
     Tool(
         name="get_artist_top_tracks",
         description=(
-            "Top tracks for an artist in the user's market. Useful for "
-            "'play the top track from artist X' Sonos chains: pass the "
-            "first item's `uri` straight into sonos_play."
+            "Fetch top tracks for an artist in the authenticated "
+            "account's market. Useful for 'play the top track from "
+            "artist X' Sonos chains: pass the first item's `uri` "
+            "straight into sonos_play."
         ),
         inputSchema={
             "type": "object",
@@ -229,16 +230,19 @@ _TOOLS: list[Tool] = [
     # ---- library & listening -------------------------------------------
     Tool(
         name="get_me",
-        description="The authenticated user's profile.",
+        description=(
+            "Fetch the authenticated account's Spotify profile "
+            "(display_name, id, country, premium status, etc.)."
+        ),
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
         name="get_top",
         description=(
-            "Your top artists or tracks. Three time ranges (short / "
-            "medium / long term ≈ 4 weeks / 6 months / lifetime). Items "
-            "carry `uri` — pipe into a playback MCP for 'play my top "
-            "track this week' chains."
+            "Fetch the authenticated account's top artists or top "
+            "tracks for a time range (short / medium / long term ≈ 4 "
+            "weeks / 6 months / lifetime). Items carry `uri` — pipe "
+            "into a playback MCP for top-track playback chains."
         ),
         inputSchema={
             "type": "object",
@@ -254,9 +258,9 @@ _TOOLS: list[Tool] = [
     Tool(
         name="get_recently_played",
         description=(
-            "Your last ≤ 50 plays with timestamps. Used by the Phase 2 "
-            "history poller; agents can also call directly for 'what did "
-            "I just listen to' style questions."
+            "Fetch the authenticated account's most recent ≤ 50 plays "
+            "with timestamps. Used by the history poller; agents can "
+            "also call directly to answer recent-listening questions."
         ),
         inputSchema={
             "type": "object",
@@ -291,12 +295,14 @@ _TOOLS: list[Tool] = [
     ),
     Tool(
         name="get_devices",
-        description="Devices currently available to this Spotify account.",
+        description=(
+            "Fetch the list of devices currently available to the " "authenticated Spotify account."
+        ),
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
         name="get_playlists",
-        description="Your playlists.",
+        description="Fetch the authenticated account's playlists (paged).",
         inputSchema={
             "type": "object",
             "properties": {
@@ -307,7 +313,9 @@ _TOOLS: list[Tool] = [
     ),
     Tool(
         name="get_saved_tracks",
-        description="Tracks you've saved/liked, paged, newest first.",
+        description=(
+            "Fetch tracks the authenticated account has saved/liked, " "paged, newest first."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -319,7 +327,7 @@ _TOOLS: list[Tool] = [
     ),
     Tool(
         name="get_saved_albums",
-        description="Albums you've saved.",
+        description=("Fetch albums the authenticated account has saved, paged, " "newest first."),
         inputSchema={
             "type": "object",
             "properties": {
@@ -331,7 +339,9 @@ _TOOLS: list[Tool] = [
     ),
     Tool(
         name="get_followed_artists",
-        description="Artists you follow. Cursor-paginated by artist ID.",
+        description=(
+            "Fetch artists the authenticated account follows. " "Cursor-paginated by artist ID."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
